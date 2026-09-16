@@ -14,10 +14,9 @@ app = Flask(__name__)
 
 # ===== ПАРСИНГ КАНАЛА =====
 
-def get_channel_posts(channel_name, limit=3):
-    """Получает последние посты из публичного канала через t.me/s/"""
+def get_channel_posts(channel_name, limit=5):
+    """Возвращает список постов с медиа"""
     try:
-        # Убираем @ если есть
         channel_name = channel_name.replace('@', '').strip()
         
         url = f"https://t.me/s/{channel_name}"
@@ -35,7 +34,7 @@ def get_channel_posts(channel_name, limit=3):
         title_el = soup.find('div', class_='tgme_channel_info_header_title')
         title = title_el.get_text(strip=True) if title_el else channel_name
         
-        # Посты
+        # Все посты
         posts = soup.find_all('div', class_='tgme_widget_message_wrap')
         
         if not posts:
@@ -43,28 +42,9 @@ def get_channel_posts(channel_name, limit=3):
         
         result_posts = []
         for post in posts[-limit:]:
-            text_el = post.find('div', class_='tgme_widget_message_text')
-            time_el = post.find('time')
-            
-            text = text_el.get_text(strip=True) if text_el else ""
-            date = time_el.get('datetime', '') if time_el else ""
-            
-            if text:
-                # Обрезаем длинные посты
-                if len(text) > 400:
-                    text = text[:400] + "..."
-                
-                # Форматируем дату
-                date_str = ""
-                if date:
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(date.replace('Z', '+00:00'))
-                        date_str = dt.strftime("%d.%m.%Y %H:%M")
-                    except:
-                        date_str = date[:16]
-                
-                result_posts.append({'text': text, 'date': date_str})
+            post_data = parse_post(post, channel_name)
+            if post_data:
+                result_posts.append(post_data)
         
         return {'title': title, 'posts': result_posts, 'exists': True}
     
@@ -73,6 +53,71 @@ def get_channel_posts(channel_name, limit=3):
         return None
 
 
+def parse_post(post, channel_name):
+    """Парсит один пост: текст, медиа, дата, ссылка"""
+    try:
+        # Текст поста
+        text_el = post.find('div', class_='tgme_widget_message_text')
+        text = text_el.get_text(separator='\n', strip=True) if text_el else ""
+        
+        # Дата
+        time_el = post.find('time')
+        date = time_el.get('datetime', '') if time_el else ""
+        date_str = ""
+        if date:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(date.replace('Z', '+00:00'))
+                date_str = dt.strftime("%d.%m.%Y %H:%M")
+            except:
+                date_str = date[:16]
+        
+        # Ссылка на пост
+        link_el = post.find('a', class_='tgme_widget_message_date')
+        post_url = link_el.get('href', '') if link_el else ""
+        
+        # Медиа: фото
+        photo_url = None
+        photo_el = post.find('a', class_='tgme_widget_message_photo_wrap')
+        if photo_el:
+            style = photo_el.get('style', '')
+            # Извлекаем URL из style="background-image:url('...')"
+            if 'url(' in style:
+                start = style.find("url('") + 5
+                end = style.find("')", start)
+                if start > 4 and end > start:
+                    photo_url = style[start:end]
+        
+        # Медиа: видео
+        video_url = None
+        video_el = post.find('video')
+        if video_el:
+            video_url = video_el.get('src')
+        
+        # Медиа: кружок
+        round_video = None
+        round_el = post.find('a', class_='tgme_widget_message_roundvideo_wrap')
+        if round_el:
+            round_video = round_el.find('video')
+            if round_video:
+                round_video = round_video.get('src')
+        
+        # Если нет ни текста, ни медиа — пропускаем
+        if not text and not photo_url and not video_url and not round_video:
+            return None
+        
+        return {
+            'text': text[:800],  # обрезаем очень длинные
+            'date': date_str,
+            'url': post_url,
+            'photo': photo_url,
+            'video': video_url,
+            'round_video': round_video
+        }
+    except Exception as e:
+        print(f"Ошибка парсинга поста: {e}")
+        return None
+        
 def extract_channel_name(text):
     """Извлекает имя канала из ссылки или текста"""
     text = text.strip()
@@ -132,7 +177,6 @@ def help_command(message):
 def handle_message(message):
     text = message.text.strip()
     
-    # Извлекаем имя канала
     channel_name = extract_channel_name(text)
     
     if not channel_name:
@@ -146,11 +190,9 @@ def handle_message(message):
         )
         return
     
-    # Показываем, что бот работает
-    msg = bot.reply_to(message, f"🔍 Ищу канал `{channel_name}`...", parse_mode="Markdown")
+    msg = bot.reply_to(message, f"🔍 Загружаю посты из `{channel_name}`...", parse_mode="Markdown")
     
-    # Парсим канал
-    result = get_channel_posts(channel_name, limit=3)
+    result = get_channel_posts(channel_name, limit=5)
     
     if not result:
         bot.edit_message_text(
@@ -167,48 +209,89 @@ def handle_message(message):
     
     if not result['posts']:
         bot.edit_message_text(
-            f"📭 Канал *{result['title']}* найден, но постов пока нет.\n\n"
-            f"Возможно, канал только что создан или закрыт для чтения.",
+            f"📭 Канал *{result['title']}* найден, но постов пока нет.",
             chat_id=message.chat.id,
             message_id=msg.message_id,
             parse_mode="Markdown"
         )
         return
     
-    # Формируем ответ
-    response = f"📰 *{result['title']}*\n"
-    response += f"@{channel_name}\n"
-    response += "━━━━━━━━━━━━━━━━━━\n\n"
-    
-    for i, post in enumerate(result['posts'], 1):
-        response += f"*{i}.* {post['text']}\n"
-        if post['date']:
-            response += f"🕐 _{post['date']}_\n"
-        response += "\n"
-    
-    response += "━━━━━━━━━━━━━━━━━━\n"
-    response += f"📊 Показано {len(result['posts'])} постов"
-    
-    # Обрезаем если очень длинно (лимит Telegram 4096)
-    if len(response) > 4000:
-        response = response[:4000] + "..."
-    
+    # Удаляем сообщение "Загружаю..."
     try:
-        bot.edit_message_text(
-            response,
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        # Если Markdown сломался — отправляем без форматирования
-        bot.edit_message_text(
-            response.replace('*', '').replace('_', '').replace('`', ''),
-            chat_id=message.chat.id,
-            message_id=msg.message_id
-        )
-
-
+        bot.delete_message(message.chat.id, msg.message_id)
+    except:
+        pass
+    
+    # Заголовок
+    bot.send_message(
+        message.chat.id,
+        f"📰 *{result['title']}*\n"
+        f"@{channel_name}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"📊 Последние {len(result['posts'])} постов:",
+        parse_mode="Markdown",
+        disable_web_page_preview=True
+    )
+    
+    # Отправляем каждый пост отдельно
+    for i, post in enumerate(result['posts'], 1):
+        # Формируем подпись
+        caption = f"*{i}.* "
+        if post['text']:
+            caption += post['text']
+        
+        if post['date']:
+            caption += f"\n\n🕐 _{post['date']}_"
+        
+        if post['url']:
+            caption += f"\n🔗 [Открыть пост]({post['url']})"
+        
+        # Обрезаем подпись до лимита Telegram (1024 символа для медиа)
+        if len(caption) > 1000:
+            caption = caption[:1000] + "..."
+        
+        try:
+            # Отправляем по типу медиа
+            if post['photo']:
+                bot.send_photo(
+                    message.chat.id,
+                    post['photo'],
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
+            elif post['round_video']:
+                # Кружок — отправляем как видео
+                bot.send_video(
+                    message.chat.id,
+                    post['round_video'],
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
+            elif post['video']:
+                bot.send_video(
+                    message.chat.id,
+                    post['video'],
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
+            else:
+                # Только текст
+                bot.send_message(
+                    message.chat.id,
+                    caption,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=False
+                )
+        except Exception as e:
+            # Если Markdown сломался — отправляем без форматирования
+            print(f"Ошибка отправки поста {i}: {e}")
+            try:
+                if post['photo']:
+                    bot.send_photo(message.chat.id, post['photo'], caption=caption.replace('*', '').replace('_', ''))
+                else:
+                    bot.send_message(message.chat.id, caption.replace('*', '').replace('_', ''))
+            except:
+                pass
 # ===== ВЕБХУК =====
 
 @app.route('/webhook', methods=['POST'])
