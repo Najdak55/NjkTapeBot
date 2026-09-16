@@ -319,17 +319,20 @@ application = app
 
 
 # ===== НАСТРОЙКА ВЕБХУКА =====
+# ===== АВТОМАТИЧЕСКАЯ УСТАНОВКА ВЕБХУКА ПРИ СТАРТЕ =====
+webhook_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://njktapebot.onrender.com')
+full_webhook_url = f"{webhook_url}/webhook"
+
+try:
+    bot.remove_webhook()
+    bot.set_webhook(url=full_webhook_url)
+    print(f"✅ Webhook установлен: {full_webhook_url}")
+except Exception as e:
+    print(f"⚠️ Ошибка установки вебхука: {e}")
+
+
+# ===== ФЛАСК ДЛЯ RENDER =====
 if __name__ == "__main__":
-    webhook_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://njktapebot.onrender.com')
-    full_webhook_url = f"{webhook_url}/webhook"
-
-    try:
-        bot.remove_webhook()
-        bot.set_webhook(url=full_webhook_url)
-        print(f"✅ Webhook установлен: {full_webhook_url}")
-    except Exception as e:
-        print(f"⚠️ Ошибка установки вебхука: {e}")
-
     port = int(os.environ.get('PORT', 10000))
     print(f"🚀 Сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
