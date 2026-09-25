@@ -565,19 +565,29 @@ def webhook():
         json_string = request.get_data().decode('utf-8')
         if not json_string:
             return "Empty request", 400
+        
+        # ЛОГИРОВАНИЕ: что пришло от Telegram
+        print(f"📥 Webhook получен: {json_string[:500]}")
+        
         update_dict = json.loads(json_string)
         update = telebot.types.Update.de_json(update_dict)
+        
+        # ЛОГИРОВАНИЕ: какой тип сообщения
+        print(f"🔍 Update type: {type(update).__name__}, message={update.message is not None}")
+        
+        # Обрабатываем
         bot.process_new_updates([update])
+        
+        # ЛОГИРОВАНИЕ: успешная обработка
+        print(f"✅ Update обработан успешно")
+        
         return "OK", 200
     except Exception as e:
-        print(f"Webhook error: {e}")
+        # ЛОГИРОВАНИЕ ошибки
+        import traceback
+        print(f"❌ WEBHOOK ERROR: {e}")
+        print(f"📜 Traceback:\n{traceback.format_exc()}")
         return f"Error: {e}", 500
-
-@app.route('/')
-def index():
-    return "News Aggregator Bot is running! 🚀", 200
-
-application = app
 
 # ===== АВТОУСТАНОВКА ВЕБХУКА =====
 webhook_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://njktapebot.onrender.com')
