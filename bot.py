@@ -15,11 +15,11 @@ bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 # ===== НАСТРОЙКИ (ЗАМЕНИ НА СВОИ) =====
-ADMIN_ID = 123456789           # ← Твой Telegram ID (узнать у @userinfobot)
-SUPPORT_NICK = "@твой_ник_поддержки"   # ← Юзернейм тех поддержки
-AUTHOR_NICK = "@твой_ник"              # ← Твой личный юзернейм
-DONATE_SBP = "+7 XXX XXX-XX-XX"        # ← Номер для СБП
-DONATE_CARD = "XXXX XXXX XXXX XXXX"    # ← Номер карты
+ADMIN_ID = 986539262           # ← Твой Telegram ID (узнать у @userinfobot)
+SUPPORT_NICK = @AlexeyAzharov   # ← Юзернейм тех поддержки
+AUTHOR_NICK = @AlexeyAzharov              # ← Твой личный юзернейм
+DONATE_SBP = +7 960 500-66-76        # ← Номер для СБП
+DONATE_CARD = 2163 5416 0653 1563    # ← Номер карты
 # ======================================
 
 # ===== TURSO =====
